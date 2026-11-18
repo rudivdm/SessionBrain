@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# SessionBrain: live work maps of Claude Code sessions, in their own window or an Orca tab.
+#
+#   sessionbrain [window] [--session ID]      open the SessionBrain window (the picker, or one session)
+#   sessionbrain open --session ID [--tab|--window]
+#                                         open one session's map: an Orca tab beside the terminal
+#                                         when run inside Orca, else the window (what /sessionbrain runs)
+#   sessionbrain here                         the window on the session in the focused window, opening
+#                                         it or bringing it forward (what Super+Shift+W runs)
+#   sessionbrain sessions                     list the open sessions the hub knows
+#   sessionbrain url [--session ID]           print the page's address
+#   sessionbrain hub start|stop|restart|status|logs
+set -euo pipefail
+
+# Each account has its own port (7317 for the first, one up for each after it) and its own key,
+# readable by that account only: another account on the same computer reaches nothing of this one's.
+own_port() { local uid; uid=$(id -u); if ((uid >= 1000 && uid < 3000)); then echo $((7317 + uid - 1000)); else echo 7317; fi; }
+PORT=${SESSIONBRAIN_PORT:-$(own_port)}
+KEY_FILE=${SESSIONBRAIN_KEY_FILE:-${XDG_STATE_HOME:-$HOME/.local/state}/sessionbrain/key}
+BASE="http://127.0.0.1:$PORT"
+UNIT=sessionbrain-hub.service
+ROOT=$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)
+
+die() { echo "$*" >&2; exit 1; }
+
+# One HTTP request to the hub, with bash alone (no curl needed): prints the body.
+hub_get() {
+  local path=$1 line body=0
+  { exec 3<>"/dev/tcp/127.0.0.1/$PORT"; } 2>/dev/null || return 1
+  printf 'GET %s HTTP/1.0\r\nHost: 127.0.0.1:%s\r\nX-SessionBrain-Key: %s\r\n\r\n' "$path" "$PORT" "$(key)" >&3
+  IFS= read -r -t 2 line <&3 || { exec 3<&-; return 1; }
+  [[ $line == "HTTP/1."?" 200"* ]] || { exec 3<&-; return 1; }
+  while IFS= read -r -t 2 line <&3; do
+    if ((body)); then printf '%s\n' "$line"; elif [[ $line == $'\r' || -z $line ]]; then body=1; fi
+  done
+  [[ -n $line ]] && printf '%s' "$line"
+  exec 3<&-
+}
+
+# This account's key (the hub makes it when it first starts).
+key() { [[ -n ${SESSIONBRAIN_KEY:-} ]] && { echo "$SESSIONBRAIN_KEY"; return; }; cat "$KEY_FILE" 2>/dev/null || true; }
+
+hub_up() { hub_get /healthz >/dev/null; }
+
+# Asks an open SessionBrain window to switch to a session.
+hub_show() {
+  { exec 3<>"/dev/tcp/127.0.0.1/$PORT"; } 2>/dev/null || return 1
+  printf 'POST /api/show?session=%s HTTP/1.0\r\nHost: 127.0.0.1:%s\r\nX-SessionBrain: 1\r\nX-SessionBrain-Key: %s\r\nContent-Length: 0\r\n\r\n' "$1" "$PORT" "$(key)" >&3
+  local line=""
+  IFS= read -r -t 2 line <&3 || true
+  exec 3<&-
+  [[ $line == "HTTP/1."?" 204"* ]]
+}
+
+window_open() { command -v hyprctl >/dev/null && hyprctl clients 2>/dev/null | grep -q '^[[:space:]]*class: sessionbrain-app$'; }
+
+focus_window() {
+  hyprctl dispatch 'hl.dsp.focus({ window = "class:^(sessionbrain-app)$" })' >/dev/null 2>&1 ||
+    hyprctl dispatch focuswindow 'class:^(sessionbrain-app)$' >/dev/null 2>&1 || true
+}
+
+ensure_hub() {
+  hub_up && return 0
+  systemctl --user start "$UNIT" >/dev/null 2>&1 || true
+  for _ in $(seq 30); do
+    hub_up && return 0
+    sleep 0.1
+  done
+  # No service (or it would not start): run the hub on its own, for as long as this login lasts.
+  setsid -f "$(app_bin)" hub >/dev/null 2>&1 </dev/null || true
+  for _ in $(seq 50); do
+    hub_up && return 0
+    sleep 0.1
+  done
+  die "the SessionBrain hub did not start; see: journalctl --user -u $UNIT -n 30"
+}
+
+url_for() {
+  local session=${1:-} extra=${2:-} k
+  ensure_hub
+  k=$(key)
+  [[ -n $k ]] || die "SessionBrain has no key yet: is the hub running? (sessionbrain hub status)"
+  if [[ -n $session ]]; then
+    echo "$BASE/?session=$session$extra&key=$k"
+  else
+    echo "$BASE/?key=$k"
+  fi
+}
+
+valid_session() { [[ $1 =~ ^[A-Za-z0-9_-]{1,100}$ ]] || die "not a session id: $1"; }
+
+app_bin() {
+  local c
+  for c in "${SESSIONBRAIN_APP:-}" "$HOME/.local/bin/sessionbrain-app" "$ROOT/app/target/release/sessionbrain-app"; do
+    [[ -n $c && -x $c ]] && { echo "$c"; return; }
+  done
+  die "sessionbrain-app is not built: run ./install.sh (or: cargo build --release --manifest-path $ROOT/app/Cargo.toml)"
+}
+
+open_window() {
+  local session=${1:-} app
+  app=$(app_bin)
+  local args=(window)
+  [[ -n $session ]] && args+=(--session "$session")
+  # The window is sessionbrain-app (WebKitGTK); Hyprland sees its class as sessionbrain-app.
+  if command -v uwsm-app >/dev/null; then
+    setsid -f uwsm-app -- "$app" "${args[@]}" >/dev/null 2>&1 </dev/null
+  else
+    setsid -f "$app" "${args[@]}" >/dev/null 2>&1 </dev/null
+  fi
+}
+
+orca_cli() {
+  if [[ -n ${ORCA_CLI_COMMAND:-} && -x $ORCA_CLI_COMMAND ]]; then
+    echo "$ORCA_CLI_COMMAND"
+  elif command -v orca >/dev/null; then
+    command -v orca
+  elif [[ -x /opt/Orca/resources/bin/orca-ide ]]; then
+    echo /opt/Orca/resources/bin/orca-ide
+  else
+    return 1
+  fi
+}
+
+open_orca_tab() {
+  local session=$1 url orca page
+  url=$(url_for "$session" "&embed=1")
+  orca=$(orca_cli) || die "the Orca CLI was not found"
+  local where=(--worktree "id:$ORCA_WORKTREE_ID")
+  # A tab already showing this session is brought forward rather than opened twice (needs jq).
+  command -v jq >/dev/null && page=$("$orca" tab list "${where[@]}" --json 2>/dev/null |
+    jq -r --arg s "session=$session" '[.result.tabs[]? | select((.url // "") | contains($s))][0] | (.browserPageId // .pageId // .id // empty)' 2>/dev/null || true)
+  if [[ -n $page ]]; then
+    "$orca" tab switch --page "$page" "${where[@]}" --focus --json >/dev/null
+    echo "Switched to this session's SessionBrain tab in Orca."
+    return
+  fi
+  "$orca" tab create --url "$url" "${where[@]}" --split right --json >/dev/null
+  echo "Opened this session's work map in an Orca tab beside the terminal."
+}
+
+cmd=${1:-window}
+case $cmd in
+  -h | --help | help) cmd=help ;;
+  -*) cmd=window ;; # options alone: `sessionbrain --session ID` opens the window on that session
+esac
+[[ $# -gt 0 && ${1:-} != -* ]] && shift
+
+session=""
+mode=""
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --session) session=${2:-}; shift 2 ;;
+    --tab) mode=tab; shift ;;
+    --window) mode=window; shift ;;
+    -h | --help) cmd=help; shift ;;
+    *) [[ $cmd == hub ]] && break; die "unknown option: $1" ;;
+  esac
+done
+[[ -n $session ]] && valid_session "$session"
+
+case $cmd in
+  window)
+    # The window starts a hub of its own when none answers.
+    open_window "$session"
+    ;;
+  open)
+    [[ -n $session ]] || die "sessionbrain open needs --session ID"
+    if [[ $mode == tab || ($mode == "" && -n ${ORCA_WORKTREE_ID:-}) ]]; then
+      [[ -n ${ORCA_WORKTREE_ID:-} ]] || die "not running inside Orca, so there is no tab to open beside; try /sessionbrain window"
+      ensure_hub
+      open_orca_tab "$session"
+    else
+      open_window "$session"
+      echo "Opened this session's work map in the SessionBrain window."
+    fi
+    ;;
+  here)
+    id=$("$(app_bin)" here 2>/dev/null || true)
+    if window_open; then
+      # The window keeps its own session when it is the focused window (`-`) or nothing is open.
+      [[ -n $id && $id != - ]] && hub_show "$id" || true
+      focus_window
+    else
+      [[ $id == - ]] && id=""
+      open_window "$id"
+    fi
+    ;;
+  url)
+    url_for "$session"
+    ;;
+  sessions)
+    ensure_hub
+    if command -v jq >/dev/null; then
+      hub_get /api/sessions | jq -r '.[] | [.name, .feed, (.activity // "-"), (.cwd // "-"), .sessionId] | @tsv' | column -t -s $'\t'
+    else
+      hub_get /api/sessions
+      echo
+    fi
+    ;;
+  hub)
+    case ${1:-status} in
+      start | stop | restart | status) systemctl --user "${1:-status}" "$UNIT" ;;
+      logs) journalctl --user -u "$UNIT" -n 50 --no-pager ;;
+      run) exec "$(app_bin)" hub ;;
+      *) die "sessionbrain hub start|stop|restart|status|logs|run" ;;
+    esac
+    ;;
+  help)
+    sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+    ;;
+  *)
+    die "unknown command: $cmd (see sessionbrain --help)"
+    ;;
+esac

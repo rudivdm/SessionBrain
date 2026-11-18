@@ -1,0 +1,16 @@
+{
+  "name": "sessionbrain",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cargo build --release --manifest-path app/Cargo.toml",
+    "test": "cargo test --release --manifest-path app/Cargo.toml && cargo build --release --manifest-path app/Cargo.toml && bun test test/ && claude plugin test plugin",
+    "check": "tsc -p .",
+    "hub": "app/target/release/sessionbrain-app hub",
+    "art": "${BLENDER:-blender} -b --factory-startup --python art/render.py --"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "5"
+  }
+}

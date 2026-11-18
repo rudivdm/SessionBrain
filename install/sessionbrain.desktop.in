@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SessionBrain
+GenericName=Claude session map
+Comment=Live work map of a Claude Code session
+Exec=@BIN@/sessionbrain window
+Icon=sessionbrain
+Terminal=false
+Categories=Development;
+Keywords=claude;agent;map;session;
+StartupWMClass=sessionbrain-app

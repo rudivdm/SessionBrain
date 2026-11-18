@@ -1,0 +1,16 @@
+{
+  "name": "sessionbrain",
+  "version": "0.2.0",
+  "description": "Adds /sessionbrain: opens this session's live work map (lot-map's map, from the SessionBrain hub) beside it, in an Orca tab or the SessionBrain window",
+  "author": {
+    "name": "Rudi van der Merwe"
+  },
+  "license": "MIT",
+  "keywords": [
+    "mod",
+    "map",
+    "visualization",
+    "activity",
+    "orca"
+  ]
+}

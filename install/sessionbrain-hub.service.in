@@ -1,0 +1,11 @@
+[Unit]
+Description=SessionBrain hub (live work maps of Claude Code sessions)
+
+[Service]
+ExecStart=@APP@ hub
+Environment=SESSIONBRAIN_CLAUDE=@CLAUDE@
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

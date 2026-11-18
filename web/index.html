@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SessionBrain</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header id="bar">
+    <a id="home" href="/" title="All sessions"><img src="/icon.svg" alt=""><span>SessionBrain</span></a>
+    <div id="pickWrap"><select id="pick" aria-label="Session"></select></div>
+    <span id="meta"></span>
+    <span id="link" class="link" title="Connection to the hub"><i></i><span id="linkWord">Connecting</span></span>
+    <button id="prefsButton" type="button" title="Display options" aria-label="Display options">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+    </button>
+  </header>
+
+  <main id="picker" hidden>
+    <div class="intro">
+      <h1>Open sessions</h1>
+      <p>Pick one to watch Claude work on it, live.</p>
+    </div>
+    <ul id="list"></ul>
+    <p id="empty" hidden>No Claude sessions are open. Start <code>claude</code> in a terminal and it appears here.</p>
+    <p class="hint">Sessions that have closed stay listed for half an hour, showing where they finished.</p>
+  </main>
+
+  <main id="viewer" hidden>
+    <div id="banner" hidden></div>
+    <div id="stage">
+      <section id="art" aria-label="Live view">
+        <canvas id="ink" aria-hidden="true"></canvas>
+        <div id="seats" aria-hidden="true"></div>
+        <div id="core" aria-hidden="true"><span id="coreName"></span><span id="coreModel"></span><span id="coreContext"></span></div>
+        <div id="scope"><div id="map" role="img"></div></div>
+        <div id="caption" aria-live="polite"><p id="capTitle"></p><p id="capDetail"></p></div>
+      </section>
+      <section id="timeline" aria-label="Timeline of the last five minutes"></section>
+      <ol id="feed" aria-label="Calls"></ol>
+    </div>
+  </main>
+
+  <dialog id="prefs">
+    <form method="dialog">
+      <h2>Display</h2>
+      <fieldset id="skins">
+        <legend>Skin</legend>
+      </fieldset>
+      <div class="pair">
+        <label>Colours, for the classic skin
+          <select name="theme"><option value="">as the session has it</option><option value="auto">follow the desktop</option><option value="dark">dark</option><option value="light">light</option></select>
+        </label>
+        <label>Language
+          <select name="language"><option value="">as the session has it</option><option value="en">English</option><option value="ru">Русский</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="it">Italiano</option><option value="pt">Português</option></select>
+        </label>
+        <label>View
+          <select name="view"><option value="">ink</option><option value="diagram">diagram</option></select>
+        </label>
+        <label>Layout
+          <select name="layout"><option value="">as the session has it</option><option value="you-top">you at the top</option><option value="you-bottom">you at the bottom</option></select>
+        </label>
+        <label>Name at the centre
+          <input name="coreName" maxlength="10" placeholder="as the session has it">
+        </label>
+      </div>
+      <menu><button value="reset" type="submit" class="quiet">Reset all</button><button value="ok" type="submit" class="go">Done</button></menu>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

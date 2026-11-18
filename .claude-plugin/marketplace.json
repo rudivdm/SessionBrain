@@ -1,0 +1,13 @@
+{
+  "name": "sessionbrain",
+  "owner": {
+    "name": "Rudi van der Merwe"
+  },
+  "plugins": [
+    {
+      "name": "sessionbrain",
+      "source": "./plugin",
+      "description": "Publishes a live work map of the session (lot-map's board) to the SessionBrain hub, so a separate window or an Orca tab can show it"
+    }
+  ]
+}
